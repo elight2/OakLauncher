@@ -1,4 +1,4 @@
-import profile
+
 
 def readKey():
     key=input()

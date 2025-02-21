@@ -3,6 +3,7 @@ import http.client
 import urllib.parse
 import json
 import DataManager
+from LauncherException import LauncherException
 
 class AccountManager(DataManager.DataManager):
     FILE_NAME="./data/accounts.json"
@@ -25,22 +26,29 @@ class AccountManager(DataManager.DataManager):
         ]
     }
 
+    accounts=[]
+
     client_id=""
     redirect_uri=""
-    urls=[
-        "https://login.microsoftonline.com/consumers/oauth2/v2.0/authorize?client_id={}&response_type=code&redirect_uri={}&response_mode=query&scope=XboxLive.signin%20offline_access"
-    ]
+
+    @staticmethod
+    def getAccount(accountName):
+        for i in AccountManager.accounts:
+            if i["name"]==accountName:
+                return i
+        raise LauncherException(info=f"AccountNotFound: {accountName}")
 
     def openWebPage(self):
         print("<...>")
-        webbrowser.open(AccountManager.urls[0].format(AccountManager.client_id,AccountManager.redirect_uri))
+        url="https://login.microsoftonline.com/consumers/oauth2/v2.0/authorize?client_id={}&response_type=code&redirect_uri={}&response_mode=query&scope=XboxLive.signin%20offline_access"
+        webbrowser.open(url.format(AccountManager.client_id,AccountManager.redirect_uri))
 
-    def getAccessToken(self,refresh:str,url:str) -> list:
+    def getAccessToken(self,refresh:str,url:str) -> tuple:
         authArgs=""
         if refresh=="":
             index=url.find("/?code=")
             if index==-1:
-                raise "URL_incorrect"
+                raise LauncherException(info="URL_incorrect")
             code=url[index+7:-1]
             authArgs=urllib.parse.urlencode({
                 "client_id":AccountManager.client_id,
@@ -63,12 +71,12 @@ class AccountManager(DataManager.DataManager):
         authResponse=authConnection.getresponse()
 
         if not authResponse.status==200:
-            raise "requestFailed:"+str(authResponse.status)
+            LauncherException(info=f"requestFailed while getAccessToken, code={authResponse.status}")
         access_token=json.loads(authResponse.read().decode("utf-8"))["access_token"]
         refresh_token=json.loads(authResponse.read().decode("utf-8"))["refresh_token"]
-        return [access_token,refresh_token]
+        return (access_token,refresh_token)
 
-    def getLiveToken(self,accessToken:str)->list:
+    def getLiveToken(self,accessToken:str)->tuple:
         authConnection=http.client.HTTPSConnection("user.auth.xboxlive.com")
         authHeaders={"Content-Type": "application/json",
             "Accept":"application/json"
@@ -87,12 +95,12 @@ class AccountManager(DataManager.DataManager):
         authResponse=authConnection.getresponse()
 
         if not authResponse.status==200:
-            raise "requestFailed:"+str(authResponse.status)
+            raise LauncherException(info=f"requestFailed while getLiveToken, code={authResponse.status}")
         token=json.loads(authResponse.read().decode("utf-8"))["Token"]
         uhs=json.loads(authResponse.read().decode("utf-8"))["DisplayClaims"]["xui"][0]["uhs"]
-        return [token,uhs]
+        return (token,uhs)
 
-    def getXstsToken(self,liveToken:str)->str:
+    def getXstsToken(self,liveToken:str)->list:
         authConnection=http.client.HTTPSConnection("xsts.auth.xboxlive.com")
         authHeaders={"Content-Type": "application/json",
             "Accept":"application/json"
@@ -112,12 +120,64 @@ class AccountManager(DataManager.DataManager):
         authResponse=authConnection.getresponse()
 
         if not authResponse.status==200:
-            raise "requestFailed:"+str(authResponse.status)
+            raise LauncherException(info=f"requestFailed while getXstsToken, code={authResponse.status}")
         xstsToken=json.loads(authResponse.read().decode("utf-8"))["Token"]
-        return xstsToken
-    
-    def readAccounts(self):
-        DataManager.DataManager.readData(AccountManager)
+        uhs=json.loads(authResponse.read().decode("utf-8"))["DisplayClaims"]["xui"][0]["uhs"]
+        return [xstsToken,uhs]
 
-    def saveAccounts(self):
-        DataManager.DataManager.saveData(AccountManager)
+    def getMinecraftToken(self,xstsToken,uhs)->str:
+        authConnection=http.client.HTTPSConnection("api.minecraftservices.com")
+        authArgData={
+            "identityToken": f"XBL3.0 x={uhs};{xstsToken}"
+        }
+        authArgs=json.dumps(authArgData)
+        authConnection.request("POST","/authentication/login_with_xbox",body=authArgs)
+        authResponse=authConnection.getresponse()
+
+        if not authResponse.status==200:
+            raise LauncherException(info=f"requestFailed while getMinecraftToken, code={authResponse.status}")
+        minecraftToken=json.loads(authResponse.read().decode("utf-8"))["access_token"]
+        return minecraftToken
+
+    # def checkMinecraft(self,minecraftToken)->bool:
+    #     authConnection=http.client.HTTPSConnection("api.minecraftservices.com")
+    #     authHeaders={"Authorization":f"Bearer {minecraftToken}"
+    #     }
+    #     authConnection.request("GET","/entitlements/mcstore",headers=authHeaders)
+    #     authResponse=authConnection.getresponse()
+
+    #     if not authResponse.status==200:
+    #         raise "requestFailed:"+str(authResponse.status)
+    #     try:
+    #         if dict(json.loads(authResponse.read().decode("utf-8")))["items"][0]["name"]=="product_minecraft":
+    #             return True
+    #         else:
+    #             return False
+    #     except KeyError:
+    #         return False
+
+    def getUserInfo(self,minecraftToken)->tuple:
+        authConnection=http.client.HTTPSConnection("api.minecraftservices.com")
+        authHeaders={"Authorization":f"Bearer {minecraftToken}"
+        }
+        authConnection.request("GET","/minecraft/profile",headers=authHeaders)
+        authResponse=authConnection.getresponse()
+
+        if not authResponse.status==200:
+            raise LauncherException(info=f"requestFailed while getUserInfo, code={authResponse.status}")
+        if (json.loads(authResponse.read().decode("utf-8"))).get("id","ERR")=="ERR":
+            return ("NOT_FOUND",)
+        else:
+            uuid=json.loads(authResponse.read().decode("utf-8"))["id"]
+            name=json.loads(authResponse.read().decode("utf-8"))["name"]
+            return (name,uuid)
+    
+    @staticmethod
+    def readAccounts():
+        AccountManager.readData()
+        AccountManager.accounts=AccountManager.data["accounts"]
+
+    @staticmethod
+    def saveAccounts():
+        AccountManager.data={"accounts":AccountManager.accounts}
+        AccountManager.saveData()
