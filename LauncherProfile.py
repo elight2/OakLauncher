@@ -1,7 +1,7 @@
-import DataManager
+from DataManager import DataManager
 from LauncherException import LauncherException
 
-class ProfileManager(DataManager.DataManager):
+class ProfileManager(DataManager):
     FILE_NAME="./data/profiles.json"
     DEFAULT_DATA={
         "profiles":[
