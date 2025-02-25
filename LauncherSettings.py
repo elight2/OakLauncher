@@ -5,7 +5,8 @@ class SettingManager(DataManager):
     FILE_NAME="./data/settings.json"
     DEFAULT_DATA={
         "dir":"./minecraft/",
-        "mirror":0
+        "mirror":0,
+        "os":"linux"
     }
 
     settings={}
