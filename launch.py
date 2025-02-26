@@ -8,6 +8,8 @@ from GameFileUri import GameFileUris
 import json
 from pathlib import Path
 import hashlib
+import zipfile
+import platform
 
 # class GameDirs:
 #     def __init__(self,minecraftPrefix:str):
@@ -72,9 +74,26 @@ def checkLibraries(uri:GameFileUris,versionJsonData,osType):
                         break
             if skip:
                 continue
-
         # check and download
+        artifact=libEntry["downloads"]["artifact"]
+        fullPath=uri.genLibraryDir(artifact["path"])
+        url=uri.genLibraryUrl(artifact["url"])
+        sha1=artifact["sha1"]
+        size=int(artifact["size"])
+        checkExistAndDownload(fullPath,url,size=size,sha1=sha1)
+        # check native
+        if libEntry["name"].find("native")!=-1:
+            # extract
+            with zipfile.ZipFile(fullPath) as f:
+                f.extractall(uri.nativesExtractDir)
+            # copy?
 
+def getAssetIndex(uri,versionJson):
+    indexEntry=versionJson["assetIndex"]
+    id=indexEntry["id"]
+    size=indexEntry["size"]
+    sha1=indexEntry["sha1"]
+    url=indexEntry["url"]
 
 def launch(profileName,accountName):
     # get info
@@ -86,6 +105,15 @@ def launch(profileName,accountName):
     settingsInfo=SettingManager.settings
     uriInfo=GameFileUris(settingsInfo["dir"])
     uriInfo.setUrlGroup(settingsInfo["mirror"])
+
+    # os type
+    curOs=platform.system()
+    if curOs=="Linux":
+        curOs="linux"
+    elif curOs=="":
+        curOs="windows"
+    elif curOs=="":
+        curOs="osx"
 
     # check java
     if not Path(profileInfo["java"]).exists():
@@ -103,5 +131,5 @@ def launch(profileName,accountName):
 
     checkVersionJar(uriInfo,versionJson)
 
-    checkLibraries(uriInfo,versionJson)
+    checkLibraries(uriInfo,versionJson,curOs)
     

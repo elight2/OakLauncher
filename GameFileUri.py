@@ -21,10 +21,13 @@ class GameFileUris:
         self.minecraftPrefix=Path(minecraftPrefix)
         self.versionManifestDir=self.minecraftPrefix/Path("version_manifest.json")
         self.librariesRoot=self.minecraftPrefix/Path("libraries")
+        self.assetsDir=self.minecraftPrefix/Path("assets")
 
     def generateDir(self,version):
         self.versionJsonDir=self.minecraftPrefix/Path("versions")/Path(version)/Path(version+".json")
         self.versionJarDir=self.minecraftPrefix/Path("versions")/Path(version)/Path(version+".jar")
+        self.nativesDir=self.minecraftPrefix/Path("versions")/Path(version)/Path("natives")
+        self.nativesExtractDir=self.minecraftPrefix/Path("versions")/Path(version)/Path("natives")/Path("extract")
 
     def genLibraryDir(self,libraryPath:str):
         return self.librariesRoot/Path(libraryPath)
